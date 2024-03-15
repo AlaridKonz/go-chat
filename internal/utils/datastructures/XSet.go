@@ -42,7 +42,7 @@ func (s *XSet[T]) IsEmpty() bool {
 }
 
 func (s *XSet[T]) ForEach(consumer func(T)) {
-	for key, _ := range s.values {
+	for key := range s.values {
 		consumer(key)
 	}
 }
