@@ -92,6 +92,17 @@ func (l *XList[T]) RemoveLast(value T) *XElement[T] {
 	return nil
 }
 
+func (l *XList[T]) Contains(value T) bool {
+	containsIt := false
+	l.ForEach(func(el T) {
+		if &el == &value {
+			containsIt = true
+			return
+		}
+	})
+	return containsIt
+}
+
 func (l *XList[T]) PushFront(value T) *XElement[T] {
 	l.backupInit()
 	return l.insertValue(value, &l.root)

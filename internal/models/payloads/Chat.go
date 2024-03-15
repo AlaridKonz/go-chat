@@ -1,6 +1,6 @@
 package payloads
 
-type Chat struct {
+type ChatMessage struct {
 	Meta    ChatMetadata `json:"meta"`
 	Content string       `json:"content"`
 }

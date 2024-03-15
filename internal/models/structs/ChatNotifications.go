@@ -10,11 +10,11 @@ import (
 )
 
 type ChatNotification struct {
-	ChatMessage          payloads.Chat
+	ChatMessage          payloads.ChatMessage
 	UnnotifiedRecipients *ds.XSet[int]
 }
 
-func NewChatNotification(chat payloads.Chat) *ChatNotification {
+func NewChatNotification(chat payloads.ChatMessage) *ChatNotification {
 	return &ChatNotification{
 		ChatMessage:          chat,
 		UnnotifiedRecipients: ds.NewXSet[int](chat.Meta.Members...),
@@ -37,7 +37,7 @@ func (cn *ChatNotification) NotifyUser(conn *websocket.Conn, recipientid int) er
 	if err != nil {
 		return err
 	}
-	if err := ws.Notify(conn, jsonStr); err != nil {
+	if err := ws.SendMessage(conn, jsonStr); err != nil {
 		return err
 	}
 	cn.Notified(recipientid)
