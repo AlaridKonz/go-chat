@@ -27,7 +27,6 @@ var pendingNotifs = make(map[int]*ds.XList[interface{}])
 func main() {
 	http.HandleFunc("/notify", newSubscriptionHandler)
 	http.HandleFunc("/chat", openChatHandler)
-	// TODO: Check why it's not properly sending messages back to notify and chat. Even though it does logically add them, and removes them, it seems.
 	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -37,10 +36,11 @@ func main() {
 		for {
 			var msg []byte
 			if _, msg, _ = conn.ReadMessage(); string(msg) == "check" {
-				jsonStr, _ := json.Marshal(chatManager)
-				ws.SendMessage(conn, jsonStr)
+				// jsonStr, _ := json.Marshal(chatManager)
+				ws.SendMessage(conn, []byte(chatManager.Debug()))
 			}
 		}
+
 	})
 	log.Fatal(http.ListenAndServe("localhost:8080", nil))
 }
@@ -89,6 +89,13 @@ func connectToChat(conn *websocket.Conn) (*ws.ClientConnection, error) {
 		log.Println(err)
 		return nil, err
 	}
+	chatManager.AddNewChatMessage(&chat)
+	for _, recipient := range chat.Meta.Members {
+		if recipient == chat.Meta.UserId {
+			continue
+		}
+		notify(recipient, chat.Meta.ChatId)
+	}
 	return &ws.ClientConnection{
 		Conn:     conn,
 		ClientId: chat.Meta.UserId,
@@ -101,14 +108,7 @@ func chatLifeHandler(clientConn *ws.ClientConnection) {
 		chatManager.NotifyUser(clientConn.ClientId, clientConn.ChatId, clientConn.Conn)
 
 		var msg payloads.ChatMessage
-		if err := clientConn.Conn.ReadJSON(&msg); err != nil {
-			log.Println(err)
-			return
-		}
-		// if err := clientConn.Conn.WriteJSON(msg); err != nil {
-		// 	log.Println(err)
-		// 	return
-		// }
+		log.Println("getting msg")
 
 		chatManager.AddNewChatMessage(&msg)
 		for _, recipient := range msg.Meta.Members {
@@ -117,6 +117,12 @@ func chatLifeHandler(clientConn *ws.ClientConnection) {
 			}
 			notify(recipient, clientConn.ChatId)
 		}
+
+		if err := clientConn.Conn.ReadJSON(&msg); err != nil {
+			log.Println(err)
+			return
+		}
+		log.Println("got msg")
 	}
 }
 

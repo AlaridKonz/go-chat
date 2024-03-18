@@ -1,5 +1,12 @@
 package datastructures
 
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+)
+
 type XElement[T any] struct {
 	prev, next *XElement[T]
 
@@ -63,10 +70,10 @@ func (l *XList[T]) Remove(element *XElement[T]) *XElement[T] {
 	return nil
 }
 
-func (l *XList[T]) RemoveIf(test func(T) bool) int {
+func (l *XList[T]) RemoveIf(test func(*T) bool) int {
 	elementsRemoved := 0
 	for e := l.Front(); e != nil; e = e.Next() {
-		if test(e.Value) {
+		if test(&e.Value) {
 			l.Remove(e)
 			elementsRemoved++
 		}
@@ -92,11 +99,12 @@ func (l *XList[T]) RemoveLast(value T) *XElement[T] {
 	return nil
 }
 
-func (l *XList[T]) Contains(value T) bool {
+func (l *XList[T]) Contains(value *T) bool {
 	containsIt := false
-	l.ForEach(func(el T) {
-		if &el == &value {
+	l.ForEach(func(el *T) {
+		if el == value {
 			containsIt = true
+			log.Println("found")
 			return
 		}
 	})
@@ -212,9 +220,10 @@ func (l *XList[T]) remove(element *XElement[T]) {
 	l.size--
 }
 
-func (l *XList[T]) ForEach(consumer func(T)) {
+func (l *XList[T]) ForEach(consumer func(*T)) {
+	log.Printf("in foreach")
 	for c, el := l.Size(), l.Front(); c > 0; c, el = c-1, el.Next() {
-		consumer(el.Value)
+		consumer(&el.Value)
 	}
 }
 
@@ -226,6 +235,15 @@ func (l *XList[T]) ForEachReversed(consumer func(T)) {
 
 func (l *XList[T]) IsEmpty() bool {
 	return l.Size() == 0
+}
+
+func (l *XList[T]) ToString() string {
+	strValues := []string{}
+	l.ForEach(func(el *T) {
+		jsonStr, _ := json.Marshal(el)
+		strValues = append(strValues, string(jsonStr))
+	})
+	return fmt.Sprintf("[%s]", strings.Join(strValues, ","))
 }
 
 func MapList[T, U any](l *XList[T], transform func(T) U) *XList[U] {
