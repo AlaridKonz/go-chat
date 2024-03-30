@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mitchellh/mapstructure"
 
 	"gochat/internal/models/payloads"
 	"gochat/internal/models/structs"
@@ -14,35 +18,106 @@ import (
 	ws "gochat/internal/utils/websocket"
 )
 
+var connections map[int]*websocket.Conn = make(map[int]*websocket.Conn)
+var chatManager = new(structs.ChatManager).Init()
+var pendingNotifs = make(map[int]*ds.XList[interface{}])
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
 
-var connections map[int]*websocket.Conn = make(map[int]*websocket.Conn)
+var conns map[*websocket.Conn]UserData = make(map[*websocket.Conn]UserData)
 
-var chatManager = new(structs.ChatManager).Init()
-var pendingNotifs = make(map[int]*ds.XList[interface{}])
+// var msgs map[int]payloads.RawResponse = make(map[int]payloads.RawResponse)
+var test sync.Map = sync.Map{}
+
+type UserData struct {
+	DeviceId int
+	UserId   int
+}
+
+var chats map[int]payloads.NewChat = make(map[int]payloads.NewChat)
+
+type Members []int
+
+const (
+	NewChat     = "newchat"
+	SendMessage = "sendmsg"
+)
 
 func main() {
-	http.HandleFunc("/notify", newSubscriptionHandler)
-	http.HandleFunc("/chat", openChatHandler)
-	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println(err)
+	http.HandleFunc("/sub", subHandler)
+	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+
+func subHandler(w http.ResponseWriter, r *http.Request) {
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	conn.SetCloseHandler(func(code int, text string) error {
+		delete(conns, conn)
+		return nil
+	})
+	go subMessageListener(conn)
+}
+
+func subMessageSpeaker(conn *websocket.Conn, userid int) {
+	for {
+		time.Sleep(1 * time.Second)
+		if _, exists := conns[conn]; !exists {
 			return
 		}
-		for {
-			var msg []byte
-			if _, msg, _ = conn.ReadMessage(); string(msg) == "check" {
-				// jsonStr, _ := json.Marshal(chatManager)
-				ws.SendMessage(conn, []byte(chatManager.Debug()))
+		if _, exists := test.Load(userid); exists {
+			msg, exists := test.LoadAndDelete(userid)
+			if !exists {
+				log.Print(exists)
+			}
+			if err := conn.WriteJSON(msg); err != nil {
+				log.Print(err)
 			}
 		}
 
-	})
-	log.Fatal(http.ListenAndServe("localhost:8080", nil))
+	}
+}
+
+func subMessageListener(conn *websocket.Conn) {
+	defer conn.Close()
+	for {
+		var sub payloads.RawMessage
+		if err := conn.ReadJSON(&sub); err != nil {
+			log.Println(err)
+			return
+		}
+
+		if _, exists := conns[conn]; !exists {
+			conns[conn] = UserData{DeviceId: sub.Metadata.DeviceId, UserId: sub.Metadata.UserId}
+			go subMessageSpeaker(conn, sub.Metadata.UserId)
+		}
+		switch sub.Action {
+		case NewChat:
+			var newchat payloads.NewChat
+			mapstructure.Decode(sub.Data, &newchat)
+			newchatId := rand.Int()
+			chats[newchatId] = newchat
+			response := payloads.RawResponse{
+				RawMessage: sub,
+			}
+			response.Data = payloads.NewChatResponse{
+				ChatId:  newchatId,
+				NewChat: newchat,
+			}
+			for _, id := range newchat.Members {
+				test.Store(id, response)
+			}
+
+		case SendMessage:
+			// handle send message
+		}
+	}
 }
 
 func newSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
