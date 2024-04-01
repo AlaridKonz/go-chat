@@ -3,9 +3,8 @@ package payloads
 import "time"
 
 type RawMessage struct {
-	Action   string   `json:"action"`
-	Metadata Metadata `json:"metadata"`
-	Data     any      `json:"data"`
+	Action string `json:"action"`
+	Data   any    `json:"data"`
 }
 
 type Metadata struct {

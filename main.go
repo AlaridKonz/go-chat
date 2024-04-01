@@ -42,6 +42,7 @@ var chats map[int]payloads.NewChat = make(map[int]payloads.NewChat)
 type Members []int
 
 const (
+	Subscribe   = "sub"
 	NewChat     = "newchat"
 	SendMessage = "sendmsg"
 )
@@ -66,6 +67,7 @@ func subHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func subMessageSpeaker(conn *websocket.Conn, userid int) {
+	conn.WriteMessage(websocket.TextMessage, []byte("Connected"))
 	for {
 		time.Sleep(1 * time.Second)
 		if _, exists := conns[conn]; !exists {
@@ -93,11 +95,15 @@ func subMessageListener(conn *websocket.Conn) {
 			return
 		}
 
-		if _, exists := conns[conn]; !exists {
-			conns[conn] = UserData{DeviceId: sub.Metadata.DeviceId, UserId: sub.Metadata.UserId}
-			go subMessageSpeaker(conn, sub.Metadata.UserId)
-		}
 		switch sub.Action {
+		case Subscribe:
+			var metadata payloads.Metadata
+			mapstructure.Decode(sub.Data, &metadata)
+			if _, exists := conns[conn]; !exists {
+				conns[conn] = UserData{DeviceId: metadata.DeviceId, UserId: metadata.UserId}
+				go subMessageSpeaker(conn, metadata.UserId)
+			}
+
 		case NewChat:
 			var newchat payloads.NewChat
 			mapstructure.Decode(sub.Data, &newchat)
@@ -115,7 +121,18 @@ func subMessageListener(conn *websocket.Conn) {
 			}
 
 		case SendMessage:
-			// handle send message
+			var text payloads.TextMessage
+			mapstructure.Decode(sub.Data, &text)
+			chatroom, exists := chats[text.ChatId]
+			if !exists {
+				continue
+			}
+			response := payloads.RawResponse{
+				RawMessage: sub,
+			}
+			for _, id := range chatroom.Members {
+				test.Store(id, response)
+			}
 		}
 	}
 }
